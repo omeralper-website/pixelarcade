@@ -1,9 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+// Supabase Bağlantısı (Ortam değişkenlerinden otomatik okur)
+const supabaseUrl = 'https://nfeukyfjfcexackiawuv.supabase.co';
+const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mZXVreWZqZmNleGFja2lhd3V2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTYyMTAsImV4cCI6MjEwNDE5MjIxMH0.M9cZ9TFVo5lbACSO5TqVEnOdtnuc8iDbwFIeZ5IFWHY';
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 interface Review {
   id: string;
+  game_key: string;
   author: string;
   rating: number;
   comment: string;
@@ -226,49 +233,66 @@ function GameCard({ title, desc, onClick, color }: { title: string; desc: string
   );
 }
 
-// Ortak Yorum Bileşeni
+// Ortak Supabase Destekli Yorum Bileşeni
 function GameReviews({ gameKey }: { gameKey: string }) {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [author, setAuthor] = useState('');
   const [comment, setComment] = useState('');
   const [rating, setRating] = useState(5);
+  const [loading, setLoading] = useState(false);
+
+  const fetchReviews = async () => {
+    const { data, error } = await supabase
+      .from('comments')
+      .select('*')
+      .eq('game_key', gameKey)
+      .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Yorumlar yüklenirken hata detayları:', JSON.stringify(error, null, 2));
+    } else if (data) {
+      const formatted: Review[] = data.map((item: any) => ({
+        id: item.id.toString(),
+        game_key: item.game_key || gameKey,
+        author: item.name || item.author,
+        rating: item.rating || 5,
+        comment: item.content || item.comment,
+        date: new Date(item.created_at).toLocaleDateString('tr-TR')
+      }));
+      setReviews(formatted);
+    }
+  };
 
   useEffect(() => {
-    const saved = localStorage.getItem(`reviews_${gameKey}`);
-    if (saved) {
-      try {
-        setReviews(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
-      }
-    } else {
-      const initialReviews: Review[] = [
-        { id: '1', author: 'RetroSever', rating: 5, comment: 'Harika bir nostalji köşesi olmuş!', date: '05.09.2026' }
-      ];
-      setReviews(initialReviews);
-      localStorage.setItem(`reviews_${gameKey}`, JSON.stringify(initialReviews));
-    }
+    fetchReviews();
   }, [gameKey]);
 
-  const handleAddReview = (e: React.FormEvent) => {
+  const handleAddReview = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!author.trim() || !comment.trim()) return;
 
-    const newReview: Review = {
-      id: Date.now().toString(),
-      author: author.trim(),
-      rating,
-      comment: comment.trim(),
-      date: new Date().toLocaleDateString('tr-TR')
-    };
+    setLoading(true);
+    const { error } = await supabase
+      .from('comments')
+      .insert([
+        {
+          game_key: gameKey,
+          name: author.trim(),
+          rating: Number(rating),
+          content: comment.trim()
+        }
+      ]);
 
-    const updated = [newReview, ...reviews];
-    setReviews(updated);
-    localStorage.setItem(`reviews_${gameKey}`, JSON.stringify(updated));
-
-    setAuthor('');
-    setComment('');
-    setRating(5);
+    if (error) {
+      console.error('Yorum eklenirken hata oluştu:', error);
+      alert('Yorum gönderilemedi, lütfen tekrar dene.');
+    } else {
+      setAuthor('');
+      setComment('');
+      setRating(5);
+      fetchReviews();
+    }
+    setLoading(false);
   };
 
   const averageRating = reviews.length > 0 
@@ -279,8 +303,8 @@ function GameReviews({ gameKey }: { gameKey: string }) {
     <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 text-left shadow-xl mt-6">
       <div className="flex items-center justify-between border-b border-slate-800 pb-4">
         <div>
-          <h4 className="text-lg font-bold text-white">Oyuncu Yorumları & Puanlar</h4>
-          <p className="text-xs text-slate-400">Bu oyun için toplam {reviews.length} değerlendirme yapıldı.</p>
+          <h4 className="text-lg font-bold text-white">Ortak Oyuncu Yorumları & Puanlar</h4>
+          <p className="text-xs text-slate-400">Bu oyun için toplam {reviews.length} küresel değerlendirme yapıldı.</p>
         </div>
         <div className="bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5">
           <span className="text-amber-400 font-bold">★ {averageRating}</span>
@@ -289,7 +313,7 @@ function GameReviews({ gameKey }: { gameKey: string }) {
       </div>
 
       <form onSubmit={handleAddReview} className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800/80">
-        <h5 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Sen De Yorum Yap</h5>
+        <h5 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Herkesin Görebileceği Yorum Bırak</h5>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input 
             type="text" 
@@ -321,15 +345,16 @@ function GameReviews({ gameKey }: { gameKey: string }) {
         />
         <button 
           type="submit"
-          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition shadow-md cursor-pointer"
+          disabled={loading}
+          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition shadow-md cursor-pointer disabled:opacity-50"
         >
-          Yorumu Gönder
+          {loading ? 'Gönderiliyor...' : 'Yorumu Gönder'}
         </button>
       </form>
 
       <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
         {reviews.length === 0 ? (
-          <p className="text-xs text-slate-500 text-center py-4">Henüz yorum yapılmamış. İlk yorumu sen yap!</p>
+          <p className="text-xs text-slate-500 text-center py-4">Henüz küresel yorum yapılmamış. İlk yorumu sen yap!</p>
         ) : (
           reviews.map((rev) => (
             <div key={rev.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/60 space-y-1">
@@ -350,27 +375,25 @@ function GameReviews({ gameKey }: { gameKey: string }) {
   );
 }
 
-// 2. Flappy Bird (Mobil Dokunmatik Kontrollü)
+// 2. Flappy Bird
 function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (score: number) => void }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [highScore, setHighScore] = useState(0);
+  const scoreRef = useRef(0);
 
   useEffect(() => {
     const saved = localStorage.getItem('flappy_highscore');
     if (saved) setHighScore(Number(saved));
   }, []);
 
-  const jumpAction = useCallback((jumpFn: () => void) => {
-    jumpFn();
-  }, []);
-
   const startGame = () => {
+    scoreRef.current = 0;
+    setScore(0);
     setIsPlaying(true);
     setIsGameOver(false);
-    setScore(0);
   };
 
   useEffect(() => {
@@ -392,14 +415,12 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
     let pipeWidth = 52;
     let pipeGap = 120;
     let frameCount = 0;
-    let currentScore = 0;
     let animationId: number;
 
     const doJump = () => {
       birdVelocity = jumpStrength;
     };
 
-    // Global zıplama tetikleyicisini dışarı bağla
     (window as any).flappyJump = doJump;
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -438,8 +459,8 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
 
         if (!pipes[i].passed && pipes[i].x + pipeWidth < birdX) {
           pipes[i].passed = true;
-          currentScore += 1;
-          setScore(currentScore);
+          scoreRef.current += 1;
+          setScore(scoreRef.current);
         }
 
         if (pipes[i].x + pipeWidth < 0) {
@@ -448,7 +469,7 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
       }
 
       if (birdY + birdRadius >= canvas.height - 30 || birdY - birdRadius <= 0) {
-        endGame(currentScore);
+        endGame(scoreRef.current);
         return;
       }
 
@@ -458,7 +479,7 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
           birdX - birdRadius < pipe.x + pipeWidth &&
           (birdY - birdRadius < pipe.topHeight || birdY + birdRadius > pipe.bottomY)
         ) {
-          endGame(currentScore);
+          endGame(scoreRef.current);
           return;
         }
       }
@@ -527,7 +548,9 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
       <div className="flex items-center justify-between w-full">
         <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
         <h3 className="text-xl font-bold">Flappy Bird 🐥</h3>
-        <div className="text-sm font-bold text-amber-400">Rekor: {highScore}</div>
+        <div className="text-sm font-bold text-amber-400 bg-slate-900 px-3 py-1 rounded-xl border border-slate-800">
+          Anlık Skor: {score}
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center">
@@ -568,7 +591,6 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
           )}
         </div>
 
-        {/* Flappy İçin Dokunmatik Zıpla Butonu */}
         {isPlaying && (
           <button 
             onClick={triggerJump}
@@ -586,7 +608,7 @@ function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (sco
   );
 }
 
-// 3. Yılan Oyunu (Mobil D-Pad Dokunmatik Kontrollü)
+// 3. Yılan Oyunu
 const GRID_SIZE = 20;
 
 function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: number) => void }) {
@@ -600,8 +622,8 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
+  const scoreRef = useRef(0);
 
-  // Yön değiştirme fonksiyonu ref veya state ile güvenli çalışması için:
   const changeDirection = useCallback((newDir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => {
     setDir(prevDir => {
       if (newDir === 'UP' && prevDir === 'DOWN') return prevDir;
@@ -632,6 +654,7 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
       { x: 10, y: 12 },
     ]);
     setDir('UP');
+    scoreRef.current = 0;
     setScore(0);
     setIsGameOver(false);
     setIsPlaying(true);
@@ -670,22 +693,22 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
         if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
           setIsGameOver(true);
           setIsPlaying(false);
-          onScore(score);
+          onScore(scoreRef.current);
           return prevSnake;
         }
 
         if (prevSnake.some(part => part.x === head.x && part.y === head.y)) {
           setIsGameOver(true);
           setIsPlaying(false);
-          onScore(score);
+          onScore(scoreRef.current);
           return prevSnake;
         }
 
         const newSnake = [head, ...prevSnake];
 
         if (head.x === food.x && head.y === food.y) {
-          const updatedScore = score + 10;
-          setScore(updatedScore);
+          scoreRef.current += 10;
+          setScore(scoreRef.current);
           setFood(spawnFood());
         } else {
           newSnake.pop();
@@ -696,14 +719,16 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
     }, 120);
 
     return () => clearInterval(interval);
-  }, [isPlaying, isGameOver, dir, food, spawnFood, score, onScore]);
+  }, [isPlaying, isGameOver, dir, food, spawnFood, onScore]);
 
   return (
     <div className="space-y-4 text-center w-full max-w-md pb-12">
       <div className="flex items-center justify-between w-full">
         <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
         <h3 className="text-xl font-bold">Yılan Oyunu 🐍</h3>
-        <div className="text-sm font-bold text-emerald-400">Skor: {score}</div>
+        <div className="text-sm font-bold text-emerald-400 bg-slate-900 px-3 py-1 rounded-xl border border-slate-800">
+          Anlık Skor: {score}
+        </div>
       </div>
 
       <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center">
@@ -760,7 +785,6 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
           })}
         </div>
 
-        {/* Mobil D-Pad Yön Tuşları */}
         {isPlaying && (
           <div className="mt-4 grid grid-cols-3 gap-2 w-48 mx-auto">
             <div />
@@ -936,6 +960,7 @@ function RpsGame({ onBack, onWin }: { onBack: () => void; onWin: (score: number)
   
   const [playerScore, setPlayerScore] = useState(0);
   const [computerScore, setComputerScore] = useState(0);
+  const playerScoreRef = useRef(0);
 
   const choices = ['Taş 🪨', 'Kağıt 📄', 'Makas ✂️'];
 
@@ -952,12 +977,9 @@ function RpsGame({ onBack, onWin }: { onBack: () => void; onWin: (score: number)
       (choice.includes('Makas') && comp.includes('Kağıt'))
     ) {
       setResult('Tebrikler, Bu Turu Kazandın! 🎉');
-      // Skorun ve fonksiyonun güncel değerle tetiklenmesini garanti altına alıyoruz
-      setPlayerScore(prev => {
-        const updatedScore = prev + 1;
-        onWin(updatedScore); // Dıştaki skor tablosuna da anında gönderiliyor
-        return updatedScore;
-      });
+      playerScoreRef.current += 1;
+      setPlayerScore(playerScoreRef.current);
+      onWin(playerScoreRef.current);
     } else {
       setResult('Bilgisayar Bu Turu Kazandı! 😢');
       setComputerScore(prev => prev + 1);
@@ -965,6 +987,7 @@ function RpsGame({ onBack, onWin }: { onBack: () => void; onWin: (score: number)
   };
 
   const resetScores = () => {
+    playerScoreRef.current = 0;
     setPlayerScore(0);
     setComputerScore(0);
     setPlayerChoice(null);
@@ -983,7 +1006,7 @@ function RpsGame({ onBack, onWin }: { onBack: () => void; onWin: (score: number)
       <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6 shadow-xl">
         <div className="flex justify-around items-center bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-sm">
           <div className="text-cyan-400 font-bold">Sen: {playerScore}</div>
-          <div className="text-slate-500 text-xs uppercase tracking-wider">Skor</div>
+          <div className="text-slate-500 text-xs uppercase tracking-wider">Anlık Skor</div>
           <div className="text-pink-500 font-bold">Bot: {computerScore}</div>
         </div>
 

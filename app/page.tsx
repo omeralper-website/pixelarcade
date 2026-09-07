@@ -635,11 +635,6 @@ function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: n
 
   useEffect(() => {
     const handleKeyPress = (e: KeyboardEvent) => {
-      // Eğer kullanıcı bir input veya textarea içinde yazıyorsa oyuna müdahale etme
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
-
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
         e.preventDefault();
       }

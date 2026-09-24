@@ -1,1044 +1,653 @@
-'use client';
+"use client";
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { createClient } from '@supabase/supabase-js';
+import React, { useEffect, useRef, useState } from 'react';
+import { 
+  Trophy, Play, Pause, RotateCcw, Volume2, VolumeX, 
+  Gamepad2, Info, Zap
+} from 'lucide-react';
 
-// Supabase Bağlantısı (Ortam değişkenlerinden otomatik okur)
-const supabaseUrl = 'https://nfeukyfjfcexackiawuv.supabase.co';
-const supabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5mZXVreWZqZmNleGFja2lhd3V2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODg2MTYyMTAsImV4cCI6MjEwNDE5MjIxMH0.M9cZ9TFVo5lbACSO5TqVEnOdtnuc8iDbwFIeZ5IFWHY';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-interface Review {
-  id: string;
-  game_key: string;
-  author: string;
-  rating: number;
-  comment: string;
-  date: string;
-}
-
-interface LeaderboardScore {
-  score: number;
-  date: string;
-}
-
-export default function ArcadeHome() {
-  const [activeGame, setActiveGame] = useState<'hub' | 'snake' | 'tictactoe' | 'rps' | 'flappy' | 'leaderboard'>('hub');
-
-  const saveScoreToLeaderboard = (gameKey: string, scoreValue: number) => {
-    if (scoreValue <= 0) return;
-    try {
-      const storageKey = `arcade_leaderboard_${gameKey}`;
-      const existing = localStorage.getItem(storageKey);
-      const scores: LeaderboardScore[] = existing ? JSON.parse(existing) : [];
-      
-      scores.push({
-        score: scoreValue,
-        date: new Date().toLocaleDateString('tr-TR')
-      });
-
-      scores.sort((a, b) => b.score - a.score);
-      localStorage.setItem(storageKey, JSON.stringify(scores.slice(0, 10)));
-    } catch (e) {
-      console.error(e);
-    }
-  };
-
-  return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none">
-      {/* Üst Menü */}
-      <header className="border-b border-slate-800 px-6 py-4 flex items-center justify-between bg-slate-900/50 backdrop-blur sticky top-0 z-50">
-        <h1 
-          onClick={() => setActiveGame('hub')}
-          className="text-2xl font-black bg-gradient-to-r from-cyan-400 to-indigo-500 bg-clip-text text-transparent cursor-pointer tracking-wider"
-        >
-          PixelArcade 🕹️
-        </h1>
-        <nav className="space-x-3 md:space-x-5 text-xs md:text-sm font-medium text-slate-300 overflow-x-auto">
-          <button onClick={() => setActiveGame('hub')} className="hover:text-cyan-400 transition cursor-pointer">Ana Menü</button>
-          <button onClick={() => setActiveGame('snake')} className="hover:text-cyan-400 transition cursor-pointer">Yılan</button>
-          <button onClick={() => setActiveGame('flappy')} className="hover:text-cyan-400 transition cursor-pointer">Flappy Bird</button>
-          <button onClick={() => setActiveGame('tictactoe')} className="hover:text-cyan-400 transition cursor-pointer">XOX</button>
-          <button onClick={() => setActiveGame('rps')} className="hover:text-cyan-400 transition cursor-pointer">Taş Kağıt Makas</button>
-          <button onClick={() => setActiveGame('leaderboard')} className="text-amber-400 hover:text-amber-300 transition cursor-pointer font-bold">🏆 Skor Salonu</button>
-        </nav>
-      </header>
-
-      {/* Ana İçerik Alanı */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 flex flex-col items-center justify-center">
-        {activeGame === 'hub' && <GameHub onSelectGame={setActiveGame} />}
-        {activeGame === 'snake' && <SnakeGame onBack={() => setActiveGame('hub')} onScore={(s) => saveScoreToLeaderboard('snake', s)} />}
-        {activeGame === 'flappy' && <FlappyBirdGame onBack={() => setActiveGame('hub')} onScore={(s) => saveScoreToLeaderboard('flappy', s)} />}
-        {activeGame === 'tictactoe' && <TicTacToeGame onBack={() => setActiveGame('hub')} onWin={() => saveScoreToLeaderboard('tictactoe', 1)} />}
-        {activeGame === 'rps' && <RpsGame onBack={() => setActiveGame('hub')} onWin={(score) => saveScoreToLeaderboard('rps', score)} />}
-        {activeGame === 'leaderboard' && <LeaderboardView onBack={() => setActiveGame('hub')} />}
-      </main>
-    </div>
-  );
-}
-
-// Global Liderlik Tablosu
-function LeaderboardView({ onBack }: { onBack: () => void }) {
-  const [selectedTab, setSelectedTab] = useState<'snake' | 'flappy' | 'tictactoe' | 'rps'>('snake');
-  const [scores, setScores] = useState<LeaderboardScore[]>([]);
-
-  const gameTitles: Record<string, string> = {
-    snake: 'Yılan Oyunu 🐍',
-    flappy: 'Flappy Bird 🐥',
-    tictactoe: 'XOX (Zeki AI) ❌',
-    rps: 'Taş Kağıt Makas ✂️'
-  };
-
-  useEffect(() => {
-    const saved = localStorage.getItem(`arcade_leaderboard_${selectedTab}`);
-    if (saved) {
-      try {
-        setScores(JSON.parse(saved));
-      } catch (e) {
-        console.error(e);
-        setScores([]);
-      }
-    } else {
-      setScores([]);
-    }
-  }, [selectedTab]);
-
-  return (
-    <div className="space-y-6 text-center w-full max-w-lg pb-12">
-      <div className="flex items-center justify-between w-full">
-        <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
-        <h3 className="text-xl font-extrabold text-amber-400 flex items-center gap-1.5">🏆 Skor Salonu</h3>
-        <div className="w-16" />
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-900 p-2 rounded-xl border border-slate-800">
-        {(['snake', 'flappy', 'tictactoe', 'rps'] as const).map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setSelectedTab(tab)}
-            className={`py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer ${
-              selectedTab === tab 
-                ? 'bg-amber-500 text-slate-950 shadow-md' 
-                : 'text-slate-400 hover:text-white hover:bg-slate-800'
-            }`}
-          >
-            {tab === 'snake' && '🐍 Yılan'}
-            {tab === 'flappy' && '🐥 Flappy'}
-            {tab === 'tictactoe' && '❌ XOX'}
-            {tab === 'rps' && '✂️ Taş-Kağıt'}
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl space-y-4 text-left">
-        <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-          <h4 className="font-bold text-white text-sm">{gameTitles[selectedTab]} Liderlik Listesi</h4>
-          <span className="text-xs text-slate-500">En İyi 10 Skor</span>
-        </div>
-
-        <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
-          {scores.length === 0 ? (
-            <div className="text-center py-10 space-y-2">
-              <p className="text-3xl">🎮</p>
-              <p className="text-xs text-slate-500">Bu oyun için henüz kaydedilmiş bir skor bulunmuyor.</p>
-            </div>
-          ) : (
-            scores.map((item, index) => {
-              const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : `#${index + 1}`;
-              return (
-                <div key={index} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 flex items-center justify-between text-xs">
-                  <div className="flex items-center gap-3">
-                    <span className="font-extrabold text-base w-6 text-center">{medal}</span>
-                    <div>
-                      <span className="text-[10px] text-slate-500">{item.date}</span>
-                    </div>
-                  </div>
-                  <div className="bg-slate-900 px-3 py-1.5 rounded-lg border border-slate-800 text-amber-400 font-extrabold">
-                    {item.score} {selectedTab === 'tictactoe' ? 'Galibiyet' : 'Puan'}
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// 1. Oyun Hub
-function GameHub({ onSelectGame }: { onSelectGame: (game: 'snake' | 'tictactoe' | 'rps' | 'flappy' | 'leaderboard') => void }) {
-  return (
-    <div className="space-y-8 text-center w-full py-8">
-      <div className="space-y-3">
-        <h2 className="text-4xl md:text-5xl font-extrabold tracking-tight bg-gradient-to-r from-white to-slate-400 bg-clip-text text-transparent">
-          Klasik Retro Oyun Merkezi
-        </h2>
-        <p className="text-slate-400 max-w-xl mx-auto text-sm md:text-base">
-          Tarayıcında hiçbir indirme yapmadan telefonda, tablette veya bilgisayarda anında oynayabileceğin efsane nostaljik oyunlar.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 pt-4">
-        <GameCard 
-          title="Yılan Oyunu 🐍" 
-          desc="Yemleri topla, kuyruğunu büyütsen de duvara çarpma!" 
-          onClick={() => onSelectGame('snake')}
-          color="from-emerald-500/20 to-green-900/20 border-emerald-500/30 hover:border-emerald-400"
-        />
-        <GameCard 
-          title="Flappy Bird 🐥" 
-          desc="Boşluklardan geç, borulara çarpmadan rekor kır!" 
-          onClick={() => onSelectGame('flappy')}
-          color="from-amber-500/20 to-yellow-900/20 border-amber-500/30 hover:border-amber-400"
-        />
-        <GameCard 
-          title="XOX (Zeki AI) ❌" 
-          desc="Seni engellemeye çalışan akıllı yapay zekaya karşı kapış!" 
-          onClick={() => onSelectGame('tictactoe')}
-          color="from-indigo-500/20 to-blue-900/20 border-indigo-500/30 hover:border-indigo-400"
-        />
-        <GameCard 
-          title="Taş Kağıt Makas ✂️" 
-          desc="Skor tablosu ve anlık hamlelerle yapay zekaya karşı kapış!" 
-          onClick={() => onSelectGame('rps')}
-          color="from-purple-500/20 to-pink-900/20 border-purple-500/30 hover:border-purple-400"
-        />
-      </div>
-
-      <div className="pt-2">
-        <button 
-          onClick={() => onSelectGame('leaderboard')}
-          className="px-6 py-3 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 rounded-2xl font-black text-sm transition shadow-lg cursor-pointer inline-flex items-center gap-2"
-        >
-          🏆 Global Liderlik Tablosunu Görüntüle
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function GameCard({ title, desc, onClick, color }: { title: string; desc: string; onClick: () => void; color: string }) {
-  return (
-    <div 
-      onClick={onClick}
-      className={`bg-slate-900 border rounded-2xl p-6 text-left space-y-4 hover:scale-105 transition-all duration-300 cursor-pointer shadow-xl flex flex-col justify-between ${color}`}
-    >
-      <div className="space-y-2">
-        <h3 className="text-xl font-bold text-white">{title}</h3>
-        <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
-      </div>
-      <span className="text-xs font-semibold text-cyan-400 flex items-center gap-1">Oynamaya Başla →</span>
-    </div>
-  );
-}
-
-// Ortak Supabase Destekli Yorum Bileşeni
-function GameReviews({ gameKey }: { gameKey: string }) {
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [author, setAuthor] = useState('');
-  const [comment, setComment] = useState('');
-  const [rating, setRating] = useState(5);
-  const [loading, setLoading] = useState(false);
-
-  const fetchReviews = async () => {
-    const { data, error } = await supabase
-      .from('comments')
-      .select('*')
-      .eq('game_key', gameKey)
-      .order('created_at', { ascending: false });
-
-      if (error) {
-        console.error('Yorumlar yüklenirken hata detayları:', JSON.stringify(error, null, 2));
-    } else if (data) {
-      const formatted: Review[] = data.map((item: any) => ({
-        id: item.id.toString(),
-        game_key: item.game_key || gameKey,
-        author: item.name || item.author,
-        rating: item.rating || 5,
-        comment: item.content || item.comment,
-        date: new Date(item.created_at).toLocaleDateString('tr-TR')
-      }));
-      setReviews(formatted);
-    }
-  };
-
-  useEffect(() => {
-    fetchReviews();
-  }, [gameKey]);
-
-  const handleAddReview = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!author.trim() || !comment.trim()) return;
-
-    setLoading(true);
-    const { error } = await supabase
-      .from('comments')
-      .insert([
-        {
-          game_key: gameKey,
-          name: author.trim(),
-          rating: Number(rating),
-          content: comment.trim()
-        }
-      ]);
-
-    if (error) {
-      console.error('Yorum eklenirken hata oluştu:', error);
-      alert('Yorum gönderilemedi, lütfen tekrar dene.');
-    } else {
-      setAuthor('');
-      setComment('');
-      setRating(5);
-      fetchReviews();
-    }
-    setLoading(false);
-  };
-
-  const averageRating = reviews.length > 0 
-    ? (reviews.reduce((acc, r) => acc + r.rating, 0) / reviews.length).toFixed(1) 
-    : '5.0';
-
-  return (
-    <div className="w-full bg-slate-900 border border-slate-800 rounded-2xl p-6 space-y-6 text-left shadow-xl mt-6">
-      <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-        <div>
-          <h4 className="text-lg font-bold text-white">Ortak Oyuncu Yorumları & Puanlar</h4>
-          <p className="text-xs text-slate-400">Bu oyun için toplam {reviews.length} küresel değerlendirme yapıldı.</p>
-        </div>
-        <div className="bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800 flex items-center gap-1.5">
-          <span className="text-amber-400 font-bold">★ {averageRating}</span>
-          <span className="text-xs text-slate-500">/ 5.0</span>
-        </div>
-      </div>
-
-      <form onSubmit={handleAddReview} className="space-y-3 bg-slate-950 p-4 rounded-xl border border-slate-800/80">
-        <h5 className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Herkesin Görebileceği Yorum Bırak</h5>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <input 
-            type="text" 
-            placeholder="Adın / Rumuzun" 
-            value={author}
-            onChange={(e) => setAuthor(e.target.value)}
-            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-            required
-          />
-          <select 
-            value={rating} 
-            onChange={(e) => setRating(Number(e.target.value))}
-            className="bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500"
-          >
-            <option value={5}>⭐⭐⭐⭐⭐ Mükemmel (5/5)</option>
-            <option value={4}>⭐⭐⭐⭐ Çok İyi (4/5)</option>
-            <option value={3}>⭐⭐⭐ Orta (3/5)</option>
-            <option value={2}>⭐⭐ Geliştirilmeli (2/5)</option>
-            <option value={1}>⭐ Kötü (1/5)</option>
-          </select>
-        </div>
-        <textarea 
-          placeholder="Oyun hakkında düşüncelerini yaz..." 
-          value={comment}
-          onChange={(e) => setComment(e.target.value)}
-          rows={2}
-          className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-cyan-500 resize-none"
-          required
-        />
-        <button 
-          type="submit"
-          disabled={loading}
-          className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-bold transition shadow-md cursor-pointer disabled:opacity-50"
-        >
-          {loading ? 'Gönderiliyor...' : 'Yorumu Gönder'}
-        </button>
-      </form>
-
-      <div className="space-y-3 max-h-60 overflow-y-auto pr-1">
-        {reviews.length === 0 ? (
-          <p className="text-xs text-slate-500 text-center py-4">Henüz küresel yorum yapılmamış. İlk yorumu sen yap!</p>
-        ) : (
-          reviews.map((rev) => (
-            <div key={rev.id} className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/60 space-y-1">
-              <div className="flex items-center justify-between text-xs">
-                <span className="font-bold text-slate-200">{rev.author}</span>
-                <div className="flex items-center gap-1">
-                  <span className="text-amber-400">{'★'.repeat(rev.rating)}</span>
-                  <span className="text-slate-600">{'★'.repeat(5 - rev.rating)}</span>
-                  <span className="text-slate-500 ml-2">{rev.date}</span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-400 leading-relaxed">{rev.comment}</p>
-            </div>
-          ))
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 2. Flappy Bird
-function FlappyBirdGame({ onBack, onScore }: { onBack: () => void; onScore: (score: number) => void }) {
+export default function FootballGame() {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [score, setScore] = useState(0);
-  const [highScore, setHighScore] = useState(0);
-  const scoreRef = useRef(0);
+  const [score, setScore] = useState({ home: 0, away: 0 });
+  const [matchTime, setMatchTime] = useState(0);
+  const [isMuted, setIsMuted] = useState(false);
+  const [power, setPower] = useState(0);
+  const [commentary, setCommentary] = useState("Maç başlamak üzere! 'Başlat' butonuna basın.");
 
-  useEffect(() => {
-    const saved = localStorage.getItem('flappy_highscore');
-    if (saved) setHighScore(Number(saved));
-  }, []);
+  const playSound = (type: 'whistle' | 'kick' | 'goal' | 'tackle') => {
+    if (isMuted) return;
+    try {
+      const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-  const startGame = () => {
-    scoreRef.current = 0;
-    setScore(0);
-    setIsPlaying(true);
-    setIsGameOver(false);
+      if (type === 'whistle') {
+        osc.frequency.setValueAtTime(800, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(400, ctx.currentTime + 0.3);
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.3);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.3);
+      } else if (type === 'kick') {
+        osc.frequency.setValueAtTime(150, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(30, ctx.currentTime + 0.1);
+        gain.gain.setValueAtTime(0.5, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.1);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.1);
+      } else if (type === 'goal') {
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(300, ctx.currentTime);
+        osc.frequency.linearRampToValueAtTime(600, ctx.currentTime + 0.5);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.8);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.8);
+      } else if (type === 'tackle') {
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(100, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.15);
+        gain.gain.setValueAtTime(0.4, ctx.currentTime);
+        gain.gain.linearRampToValueAtTime(0, ctx.currentTime + 0.15);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.15);
+      }
+    } catch (e) {}
   };
 
   useEffect(() => {
-    if (!isPlaying) return;
-
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let birdY = 150;
-    let birdVelocity = 0;
-    const gravity = 0.35;
-    const jumpStrength = -6.5;
-    const birdX = 50;
-    const birdRadius = 14;
+    let animationFrameId: number;
+    let isPoweringUp = false;
+    let powerValue = 0;
+    let passCooldown = 0;
 
-    let pipes: { x: number; topHeight: number; bottomY: number; passed: boolean }[] = [];
-    let pipeWidth = 52;
-    let pipeGap = 120;
-    let frameCount = 0;
-    let animationId: number;
+    const keys: { [key: string]: boolean } = {};
 
-    const doJump = () => {
-      birdVelocity = jumpStrength;
+    const field = {
+      width: 1000,
+      height: 600,
+      padding: 50,
     };
 
-    (window as any).flappyJump = doJump;
+    const ball = {
+      x: field.width / 2,
+      y: field.height / 2,
+      vx: 0,
+      vy: 0,
+      radius: 8,
+      friction: 0.985,
+      owner: null as any,
+      passTarget: null as any, // Pas verilen hedef oyuncu
+    };
+
+    interface Player {
+      id: number;
+      x: number;
+      y: number;
+      vx: number;
+      vy: number;
+      radius: 14;
+      speed: number;
+      team: 'home' | 'away';
+      isUser?: boolean;
+      role: 'GK' | 'DEF' | 'MID' | 'ATT';
+      lastMoveDir: { x: number; y: number };
+    }
+
+    const players: Player[] = [
+      // Mavi Takım (Biz)
+      { id: 1, x: 100, y: 300, vx: 0, vy: 0, radius: 14, speed: 4.0, team: 'home', role: 'GK', lastMoveDir: { x: 1, y: 0 } },
+      { id: 2, x: 300, y: 180, vx: 0, vy: 0, radius: 14, speed: 4.1, team: 'home', role: 'DEF', lastMoveDir: { x: 1, y: 0 } },
+      { id: 3, x: 300, y: 420, vx: 0, vy: 0, radius: 14, speed: 4.1, team: 'home', role: 'DEF', lastMoveDir: { x: 1, y: 0 } },
+      { id: 4, x: 480, y: 300, vx: 0, vy: 0, radius: 14, speed: 4.5, team: 'home', isUser: true, role: 'ATT', lastMoveDir: { x: 1, y: 0 } },
+
+      // Kırmızı Takım (Rakip)
+      { id: 5, x: 900, y: 300, vx: 0, vy: 0, radius: 14, speed: 3.2, team: 'away', role: 'GK', lastMoveDir: { x: -1, y: 0 } },
+      { id: 6, x: 700, y: 180, vx: 0, vy: 0, radius: 14, speed: 3.3, team: 'away', role: 'DEF', lastMoveDir: { x: -1, y: 0 } },
+      { id: 7, x: 700, y: 420, vx: 0, vy: 0, radius: 14, speed: 3.3, team: 'away', role: 'DEF', lastMoveDir: { x: -1, y: 0 } },
+      { id: 8, x: 550, y: 300, vx: 0, vy: 0, radius: 14, speed: 3.5, team: 'away', role: 'ATT', lastMoveDir: { x: -1, y: 0 } },
+    ];
+
+    const getUserPlayer = () => players.find(p => p.isUser) || players[3];
+
+    // Kontrolü Mavi Takımda Topu Alan Oyuncuya Ver
+    const switchUserControlTo = (newPlayer: Player) => {
+      if (newPlayer.team !== 'home' || newPlayer.role === 'GK') return;
+      players.forEach(p => (p.isUser = false));
+      newPlayer.isUser = true;
+    };
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === ' ' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        doJump();
+      keys[e.key.toLowerCase()] = true;
+      const userPlayer = getUserPlayer();
+
+      if (e.code === 'Space' && ball.owner === userPlayer) {
+        isPoweringUp = true;
+      }
+
+      // Top Kapma (E)
+      if (e.key.toLowerCase() === 'e') {
+        let tackled = false;
+        players.forEach(p => {
+          if (p.team === 'away' && ball.owner === p) {
+            const dist = Math.hypot(userPlayer.x - p.x, userPlayer.y - p.y);
+            if (dist < 45) {
+              ball.owner = userPlayer;
+              ball.passTarget = null;
+              playSound('tackle');
+              setCommentary("Harika müdahale! Topu kaptın!");
+              tackled = true;
+            }
+          }
+        });
+        if (!tackled && ball.owner === null) {
+          const distToBall = Math.hypot(userPlayer.x - ball.x, userPlayer.y - ball.y);
+          if (distToBall < 40) {
+            ball.owner = userPlayer;
+            ball.passTarget = null;
+            playSound('tackle');
+          }
+        }
+      }
+
+      // Pas (K) - Doğrudan Arkadaşa Gidecek
+      if (e.key.toLowerCase() === 'k' && ball.owner === userPlayer) {
+        const teammates = players.filter(p => p.team === 'home' && p.id !== userPlayer.id && p.role !== 'GK');
+        let bestTarget = teammates[0];
+        let maxDist = -1;
+
+        teammates.forEach(t => {
+          const d = Math.hypot(t.x - userPlayer.x, t.y - userPlayer.y);
+          if (d > maxDist) {
+            maxDist = d;
+            bestTarget = t;
+          }
+        });
+
+        if (bestTarget) {
+          ball.owner = null;
+          ball.passTarget = bestTarget; // Pas hedefini kaydet
+          passCooldown = 15;
+          playSound('kick');
+          setCommentary("Şık bir pas gönderildi!");
+        }
       }
     };
 
-    const handleClick = () => {
-      doJump();
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keys[e.key.toLowerCase()] = false;
+      const userPlayer = getUserPlayer();
+
+      if (e.code === 'Space' && ball.owner === userPlayer) {
+        isPoweringUp = false;
+        const shootPower = Math.max(10, (powerValue / 100) * 18);
+        
+        // Şut Düzeltmesi: Daima Rakip Kalenin Ortasına Doğru
+        const targetX = field.width - field.padding;
+        const targetY = field.height / 2;
+        const angle = Math.atan2(targetY - userPlayer.y, targetX - userPlayer.x);
+
+        ball.owner = null;
+        ball.passTarget = null;
+        passCooldown = 20;
+        ball.vx = Math.cos(angle) * shootPower;
+        ball.vy = Math.sin(angle) * shootPower;
+        playSound('kick');
+        setCommentary("Sert bir şut!");
+        powerValue = 0;
+        setPower(0);
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
-    canvas.addEventListener('click', handleClick);
+    window.addEventListener('keyup', handleKeyUp);
 
-    const loop = () => {
-      frameCount++;
-      birdVelocity += gravity;
-      birdY += birdVelocity;
+    const drawField = () => {
+      ctx.fillStyle = '#2e7d32';
+      ctx.fillRect(0, 0, field.width, field.height);
 
-      if (frameCount % 90 === 0) {
-        const minHeight = 50;
-        const maxHeight = canvas.height - pipeGap - 50;
-        const topHeight = Math.floor(Math.random() * (maxHeight - minHeight + 1)) + minHeight;
-        pipes.push({
-          x: canvas.width,
-          topHeight,
-          bottomY: topHeight + pipeGap,
-          passed: false
-        });
+      ctx.fillStyle = '#338a37';
+      for (let i = 0; i < field.width; i += 80) {
+        if ((i / 80) % 2 === 0) ctx.fillRect(i, 0, 80, field.height);
       }
 
-      for (let i = pipes.length - 1; i >= 0; i--) {
-        pipes[i].x -= 2.5;
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 4;
 
-        if (!pipes[i].passed && pipes[i].x + pipeWidth < birdX) {
-          pipes[i].passed = true;
-          scoreRef.current += 1;
-          setScore(scoreRef.current);
-        }
+      const p = field.padding;
+      const w = field.width - p * 2;
+      const h = field.height - p * 2;
+      ctx.strokeRect(p, p, w, h);
 
-        if (pipes[i].x + pipeWidth < 0) {
-          pipes.splice(i, 1);
-        }
-      }
-
-      if (birdY + birdRadius >= canvas.height - 30 || birdY - birdRadius <= 0) {
-        endGame(scoreRef.current);
-        return;
-      }
-
-      for (let pipe of pipes) {
-        if (
-          birdX + birdRadius > pipe.x &&
-          birdX - birdRadius < pipe.x + pipeWidth &&
-          (birdY - birdRadius < pipe.topHeight || birdY + birdRadius > pipe.bottomY)
-        ) {
-          endGame(scoreRef.current);
-          return;
-        }
-      }
-
-      ctx.fillStyle = '#090d16';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-      ctx.fillStyle = '#22c55e';
-      for (let pipe of pipes) {
-        ctx.fillRect(pipe.x, 0, pipeWidth, pipe.topHeight);
-        ctx.fillRect(pipe.x, pipe.bottomY, pipeWidth, canvas.height - pipe.bottomY);
-      }
-
-      ctx.fillStyle = '#1e293b';
-      ctx.fillRect(0, canvas.height - 30, canvas.width, 30);
-
-      ctx.fillStyle = '#eab308';
       ctx.beginPath();
-      ctx.arc(birdX, birdY, birdRadius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.strokeStyle = '#854d0e';
-      ctx.lineWidth = 2;
+      ctx.moveTo(field.width / 2, p);
+      ctx.lineTo(field.width / 2, field.height - p);
       ctx.stroke();
 
-      ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(birdX + 4, birdY - 4, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = '#000000';
-      ctx.beginPath();
-      ctx.arc(birdX + 5, birdY - 4, 1.5, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.arc(field.width / 2, field.height / 2, 70, 0, Math.PI * 2);
+      ctx.stroke();
 
-      animationId = requestAnimationFrame(loop);
+      ctx.strokeRect(p, field.height / 2 - 120, 130, 240);
+      ctx.strokeRect(field.width - p - 130, field.height / 2 - 120, 130, 240);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+      ctx.fillRect(p - 25, field.height / 2 - 60, 25, 120);
+      ctx.strokeRect(p - 25, field.height / 2 - 60, 25, 120);
+      ctx.fillRect(field.width - p, field.height / 2 - 60, 25, 120);
+      ctx.strokeRect(field.width - p, field.height / 2 - 60, 25, 120);
     };
 
-    animationId = requestAnimationFrame(loop);
+    const resetPositions = () => {
+      ball.x = field.width / 2;
+      ball.y = field.height / 2;
+      ball.vx = 0;
+      ball.vy = 0;
+      ball.owner = null;
+      ball.passTarget = null;
+      passCooldown = 0;
 
-    const endGame = (finalScore: number) => {
-      setIsPlaying(false);
-      setIsGameOver(true);
-      onScore(finalScore);
-      setHighScore(prev => {
-        const newMax = Math.max(prev, finalScore);
-        localStorage.setItem('flappy_highscore', newMax.toString());
-        return newMax;
-      });
+      players[0].x = 100; players[0].y = 300;
+      players[1].x = 300; players[1].y = 180;
+      players[2].x = 300; players[2].y = 420;
+      players[3].x = 480; players[3].y = 300;
+
+      players[4].x = 900; players[4].y = 300;
+      players[5].x = 700; players[5].y = 180;
+      players[6].x = 700; players[6].y = 420;
+      players[7].x = 550; players[7].y = 300;
+
+      switchUserControlTo(players[3]);
     };
 
-    return () => {
-      cancelAnimationFrame(animationId);
-      window.removeEventListener('keydown', handleKeyDown);
-      canvas.removeEventListener('click', handleClick);
-      delete (window as any).flappyJump;
-    };
-  }, [isPlaying, onScore]);
-
-  const triggerJump = () => {
-    if ((window as any).flappyJump) {
-      (window as any).flappyJump();
-    }
-  };
-
-  return (
-    <div className="space-y-4 text-center w-full max-w-md pb-12">
-      <div className="flex items-center justify-between w-full">
-        <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
-        <h3 className="text-xl font-bold">Flappy Bird 🐥</h3>
-        <div className="text-sm font-bold text-amber-400 bg-slate-900 px-3 py-1 rounded-xl border border-slate-800">
-          Anlık Skor: {score}
-        </div>
-      </div>
-
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center">
-        <div className="relative rounded-lg overflow-hidden border border-slate-800 shadow-inner">
-          <canvas 
-            ref={canvasRef} 
-            width={320} 
-            height={380} 
-            className="bg-slate-950 cursor-pointer block"
-          />
-
-          {!isPlaying && !isGameOver && (
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 z-10">
-              <p className="text-slate-300 text-xs px-6 text-center">Boşluk tuşuna, ekrana veya alttaki zıpla butonuna basarak kuşu uçur!</p>
-              <button 
-                onClick={startGame}
-                className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-extrabold transition shadow-lg cursor-pointer text-sm"
-              >
-                Oyunu Başlat
-              </button>
-            </div>
-          )}
-
-          {isGameOver && (
-            <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center space-y-3 z-10">
-              <p className="text-pink-500 font-extrabold text-lg">Oyun Bitti! 😢</p>
-              <div className="text-sm text-slate-300 space-y-1">
-                <p>Skorun: <span className="font-bold text-amber-400">{score}</span></p>
-                <p>En Yüksek: <span className="font-bold text-emerald-400">{highScore}</span></p>
-              </div>
-              <button 
-                onClick={startGame}
-                className="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition shadow-lg cursor-pointer text-sm"
-              >
-                Tekrar Dene
-              </button>
-            </div>
-          )}
-        </div>
-
-        {isPlaying && (
-          <button 
-            onClick={triggerJump}
-            className="w-full mt-3 py-3 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-xl font-black text-sm transition shadow-lg active:scale-95 cursor-pointer"
-          >
-            🚀 ZIPLA!
-          </button>
-        )}
-
-        <p className="text-xs text-slate-500 mt-3">Kontrol: Bilgisayarda <b>Space</b>, mobilde ekrandaki ZIPLA butonu.</p>
-      </div>
-
-      <GameReviews gameKey="flappy" />
-    </div>
-  );
-}
-
-// 3. Yılan Oyunu
-const GRID_SIZE = 20;
-
-function SnakeGame({ onBack, onScore }: { onBack: () => void; onScore: (score: number) => void }) {
-  const [snake, setSnake] = useState([
-    { x: 10, y: 10 },
-    { x: 10, y: 11 },
-    { x: 10, y: 12 },
-  ]);
-  const [food, setFood] = useState({ x: 5, y: 5 });
-  const [dir, setDir] = useState<'UP' | 'DOWN' | 'LEFT' | 'RIGHT'>('UP');
-  const [isGameOver, setIsGameOver] = useState(false);
-  const [score, setScore] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const scoreRef = useRef(0);
-
-  const changeDirection = useCallback((newDir: 'UP' | 'DOWN' | 'LEFT' | 'RIGHT') => {
-    setDir(prevDir => {
-      if (newDir === 'UP' && prevDir === 'DOWN') return prevDir;
-      if (newDir === 'DOWN' && prevDir === 'UP') return prevDir;
-      if (newDir === 'LEFT' && prevDir === 'RIGHT') return prevDir;
-      if (newDir === 'RIGHT' && prevDir === 'LEFT') return prevDir;
-      return newDir;
-    });
-  }, []);
-
-  const spawnFood = useCallback(() => {
-    let newFood: { x: number; y: number };
-    while (true) {
-      newFood = {
-        x: Math.floor(Math.random() * GRID_SIZE),
-        y: Math.floor(Math.random() * GRID_SIZE),
-      };
-      const collision = snake.some(part => part.x === newFood.x && part.y === newFood.y);
-      if (!collision) break;
-    }
-    return newFood;
-  }, [snake]);
-
-  const startGame = () => {
-    setSnake([
-      { x: 10, y: 10 },
-      { x: 10, y: 11 },
-      { x: 10, y: 12 },
-    ]);
-    setDir('UP');
-    scoreRef.current = 0;
-    setScore(0);
-    setIsGameOver(false);
-    setIsPlaying(true);
-    setFood({ x: 5, y: 5 });
-  };
-
-  useEffect(() => {
-    const handleKeyPress = (e: KeyboardEvent) => {
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
-        e.preventDefault();
-      }
+    const update = () => {
       if (!isPlaying) return;
 
-      if (e.key === 'ArrowUp') changeDirection('UP');
-      if (e.key === 'ArrowDown') changeDirection('DOWN');
-      if (e.key === 'ArrowLeft') changeDirection('LEFT');
-      if (e.key === 'ArrowRight') changeDirection('RIGHT');
+      const userPlayer = getUserPlayer();
+      if (passCooldown > 0) passCooldown--;
+
+      if (isPoweringUp) {
+        powerValue = Math.min(100, powerValue + 3.5);
+        setPower(powerValue);
+      }
+
+      // Kullanıcı Hareketi
+      let moveX = 0;
+      let moveY = 0;
+      if (keys['w'] || keys['arrowup']) moveY -= 1;
+      if (keys['s'] || keys['arrowdown']) moveY += 1;
+      if (keys['a'] || keys['arrowleft']) moveX -= 1;
+      if (keys['d'] || keys['arrowright']) moveX += 1;
+
+      if (moveX !== 0 || moveY !== 0) {
+        userPlayer.lastMoveDir = { x: moveX, y: moveY };
+        const len = Math.hypot(moveX, moveY);
+        userPlayer.x += (moveX / len) * userPlayer.speed;
+        userPlayer.y += (moveY / len) * userPlayer.speed;
+      }
+
+      // AI Davranışları ve Pozisyon Güncellemeleri
+      players.forEach(p => {
+        if (p.isUser) return;
+
+        let targetX = p.x;
+        let targetY = p.y;
+
+        // KALECİLER MANTIĞI
+        if (p.role === 'GK') {
+          if (ball.owner === p) {
+            const teammates = players.filter(t => t.team === p.team && t.role !== 'GK');
+            let closestTeammate = teammates[0];
+            let minDist = Infinity;
+
+            teammates.forEach(t => {
+              const d = Math.hypot(t.x - p.x, t.y - p.y);
+              if (d < minDist) {
+                minDist = d;
+                closestTeammate = t;
+              }
+            });
+
+            if (closestTeammate) {
+              ball.owner = null;
+              ball.passTarget = closestTeammate;
+              passCooldown = 20;
+              playSound('kick');
+
+              if (p.team === 'home') {
+                setCommentary("Kalecin topu en yakındaki takım arkadaşına aktardı!");
+              } else {
+                setCommentary("Rakip kaleci pasla oyunu başlattı.");
+              }
+            }
+          } else {
+            targetY = Math.max(field.height / 2 - 45, Math.min(field.height / 2 + 45, ball.y));
+            targetX = p.team === 'home' ? field.padding + 30 : field.width - field.padding - 30;
+          }
+        } 
+        // TAKIM ARKADAŞLARI
+        else if (p.team === 'home') {
+          if (ball.owner === p) {
+            targetX = field.width - field.padding - 40;
+            targetY = field.height / 2;
+
+            const distToGoal = Math.hypot(p.x - (field.width - field.padding), p.y - (field.height / 2));
+            if (distToGoal < 300) {
+              ball.owner = null;
+              ball.passTarget = null;
+              passCooldown = 20;
+              const angle = Math.atan2((field.height / 2) - p.y, (field.width - field.padding) - p.x);
+              ball.vx = Math.cos(angle) * 15;
+              ball.vy = Math.sin(angle) * 15;
+              playSound('kick');
+              setCommentary("Takım arkadaşın kaleye vurdu!");
+            }
+          } else if (ball.owner === userPlayer) {
+            targetX = Math.min(field.width - 150, userPlayer.x + 160);
+            targetY = p.id === 2 ? 160 : 440;
+          } else {
+            targetX = ball.x;
+            targetY = ball.y;
+
+            if (ball.owner && ball.owner.team === 'away') {
+              const distToEnemy = Math.hypot(p.x - ball.owner.x, p.y - ball.owner.y);
+              if (distToEnemy < 25 && Math.random() < 0.08) {
+                ball.owner = p;
+                ball.passTarget = null;
+                switchUserControlTo(p);
+                playSound('tackle');
+                setCommentary("Takım arkadaşın topu söktü aldı!");
+              }
+            }
+          }
+        } 
+        // RAKİP TAKIM
+        else if (p.team === 'away') {
+          if (ball.owner === p) {
+            targetX = field.padding + 40;
+            targetY = field.height / 2;
+
+            const distToGoal = Math.hypot(p.x - field.padding, p.y - (field.height / 2));
+            if (distToGoal < 320 && Math.random() < 0.03) {
+              ball.owner = null;
+              ball.passTarget = null;
+              passCooldown = 20;
+              const angle = Math.atan2((field.height / 2) - p.y, field.padding - p.x);
+              ball.vx = Math.cos(angle) * 13;
+              ball.vy = Math.sin(angle) * 13;
+              playSound('kick');
+              setCommentary("Rakip kaleyi karşıdan gördü ve vurdu!");
+            }
+          } else {
+            targetX = ball.x;
+            targetY = ball.y;
+
+            if (ball.owner && ball.owner.team === 'home') {
+              const distToHome = Math.hypot(p.x - ball.owner.x, p.y - ball.owner.y);
+              if (distToHome < 22 && Math.random() < 0.03) {
+                ball.owner = p;
+                ball.passTarget = null;
+                playSound('tackle');
+                setCommentary("Rakip topa müdahale etti.");
+              }
+            }
+          }
+        }
+
+        const dx = targetX - p.x;
+        const dy = targetY - p.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist > 4) {
+          p.x += (dx / dist) * p.speed * 0.85;
+          p.y += (dy / dist) * p.speed * 0.85;
+          p.lastMoveDir = { x: dx / dist, y: dy / dist };
+        }
+      });
+
+      // Saha Sınırları
+      players.forEach(p => {
+        p.x = Math.max(field.padding + p.radius + 5, Math.min(field.width - field.padding - p.radius - 5, p.x));
+        p.y = Math.max(field.padding + p.radius + 5, Math.min(field.height - field.padding - p.radius - 5, p.y));
+      });
+
+      // Top Fiziği & Pas Takibi
+      if (ball.owner) {
+        const p = ball.owner;
+        const angle = Math.atan2(p.lastMoveDir.y, p.lastMoveDir.x);
+        ball.x = p.x + Math.cos(angle) * 16;
+        ball.y = p.y + Math.sin(angle) * 16;
+        ball.vx = 0;
+        ball.vy = 0;
+      } else if (ball.passTarget) {
+        // Pas verilmişse top direkt olarak hedefe doğru ideal hızda yönlenir
+        const dx = ball.passTarget.x - ball.x;
+        const dy = ball.passTarget.y - ball.y;
+        const dist = Math.hypot(dx, dy);
+
+        if (dist < 15) {
+          ball.owner = ball.passTarget;
+          if (ball.passTarget.team === 'home' && ball.passTarget.role !== 'GK') {
+            switchUserControlTo(ball.passTarget);
+          }
+          ball.passTarget = null;
+        } else {
+          const passSpeed = 8; // İdeal pas hızı
+          ball.x += (dx / dist) * passSpeed;
+          ball.y += (dy / dist) * passSpeed;
+        }
+      } else {
+        ball.x += ball.vx;
+        ball.y += ball.vy;
+        ball.vx *= ball.friction;
+        ball.vy *= ball.friction;
+
+        if (passCooldown === 0) {
+          players.forEach(p => {
+            const dist = Math.hypot(p.x - ball.x, p.y - ball.y);
+            if (dist < p.radius + ball.radius + 5) {
+              ball.owner = p;
+              if (p.team === 'home' && p.role !== 'GK') switchUserControlTo(p);
+            }
+          });
+        }
+      }
+
+      // Duvar Yansımaları
+      const p = field.padding;
+      if (ball.y - ball.radius <= p || ball.y + ball.radius >= field.height - p) {
+        ball.vy *= -0.7;
+        ball.y = ball.y - ball.radius <= p ? p + ball.radius : field.height - p - ball.radius;
+      }
+
+      const isGoalY = ball.y > field.height / 2 - 60 && ball.y < field.height / 2 + 60;
+      if (!isGoalY) {
+        if (ball.x - ball.radius <= p || ball.x + ball.radius >= field.width - p) {
+          ball.vx *= -0.7;
+          ball.x = ball.x - ball.radius <= p ? p + ball.radius : field.width - p - ball.radius;
+        }
+      }
+
+      // Gol Kontrolleri
+      if (ball.x > field.width - p + 5 && isGoalY) {
+        setScore(prev => ({ ...prev, home: prev.home + 1 }));
+        playSound('goal');
+        setCommentary("GOOOOLLLL! Mükemmel bir gol!");
+        resetPositions();
+      }
+
+      if (ball.x < p - 5 && isGoalY) {
+        setScore(prev => ({ ...prev, away: prev.away + 1 }));
+        playSound('goal');
+        setCommentary("GOL! Top ağlarımızda...");
+        resetPositions();
+      }
+
+      drawField();
+
+      // Top Çizimi
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Oyuncu Çizimleri
+      players.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+        ctx.fillStyle = p.team === 'home' ? '#1e88e5' : '#e53935';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        if (p.isUser) {
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.radius + 6, 0, Math.PI * 2);
+          ctx.strokeStyle = '#fbc02d';
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(p.role, p.x, p.y + 4);
+      });
+
+      animationFrameId = requestAnimationFrame(update);
     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, [isPlaying, changeDirection]);
+    animationFrameId = requestAnimationFrame(update);
+
+    return () => {
+      cancelAnimationFrame(animationFrameId);
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, [isPlaying, isMuted]);
 
   useEffect(() => {
-    if (!isPlaying || isGameOver) return;
-
-    const interval = setInterval(() => {
-      setSnake(prevSnake => {
-        const head = { ...prevSnake[0] };
-
-        if (dir === 'UP') head.y -= 1;
-        if (dir === 'DOWN') head.y += 1;
-        if (dir === 'LEFT') head.x -= 1;
-        if (dir === 'RIGHT') head.x += 1;
-
-        if (head.x < 0 || head.x >= GRID_SIZE || head.y < 0 || head.y >= GRID_SIZE) {
-          setIsGameOver(true);
-          setIsPlaying(false);
-          onScore(scoreRef.current);
-          return prevSnake;
-        }
-
-        if (prevSnake.some(part => part.x === head.x && part.y === head.y)) {
-          setIsGameOver(true);
-          setIsPlaying(false);
-          onScore(scoreRef.current);
-          return prevSnake;
-        }
-
-        const newSnake = [head, ...prevSnake];
-
-        if (head.x === food.x && head.y === food.y) {
-          scoreRef.current += 10;
-          setScore(scoreRef.current);
-          setFood(spawnFood());
-        } else {
-          newSnake.pop();
-        }
-
-        return newSnake;
-      });
-    }, 120);
-
-    return () => clearInterval(interval);
-  }, [isPlaying, isGameOver, dir, food, spawnFood, onScore]);
+    let timer: any;
+    if (isPlaying) {
+      timer = setInterval(() => {
+        setMatchTime(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timer);
+  }, [isPlaying]);
 
   return (
-    <div className="space-y-4 text-center w-full max-w-md pb-12">
-      <div className="flex items-center justify-between w-full">
-        <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
-        <h3 className="text-xl font-bold">Yılan Oyunu 🐍</h3>
-        <div className="text-sm font-bold text-emerald-400 bg-slate-900 px-3 py-1 rounded-xl border border-slate-800">
-          Anlık Skor: {score}
+    <div className="flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4 font-sans selection:bg-none">
+      <div className="w-full max-w-[1000px] bg-slate-800 rounded-t-xl p-4 flex items-center justify-between border-b border-slate-700 shadow-lg">
+        <div className="flex items-center gap-3">
+          <Trophy className="text-yellow-400 w-7 h-7" />
+          <span className="font-bold text-xl tracking-wider">NEXT.JS CANVAS FOOTBALL</span>
+        </div>
+
+        <div className="flex items-center gap-6 bg-slate-900 px-6 py-2 rounded-lg border border-slate-700">
+          <div className="flex items-center gap-2">
+            <span className="w-3 h-3 rounded-full bg-blue-500"></span>
+            <span className="font-semibold text-lg">MAVİ</span>
+          </div>
+          <span className="text-3xl font-black text-yellow-400">{score.home} - {score.away}</span>
+          <div className="flex items-center gap-2">
+            <span className="font-semibold text-lg">KIRMIZI</span>
+            <span className="w-3 h-3 rounded-full bg-red-500"></span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          <div className="text-right">
+            <div className="text-xs text-slate-400">MAÇ SÜRESİ</div>
+            <div className="font-mono text-xl font-bold text-emerald-400">
+              {Math.floor(matchTime / 60).toString().padStart(2, '0')}:{(matchTime % 60).toString().padStart(2, '0')}
+            </div>
+          </div>
+          <button
+            onClick={() => setIsMuted(!isMuted)}
+            className="p-2 bg-slate-700 hover:bg-slate-600 rounded-lg transition"
+          >
+            {isMuted ? <VolumeX className="w-5 h-5 text-red-400" /> : <Volume2 className="w-5 h-5 text-emerald-400" />}
+          </button>
         </div>
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 p-4 rounded-2xl shadow-xl flex flex-col items-center">
-        <div 
-          className="relative bg-slate-950 border border-slate-800 rounded-lg grid focus:outline-none focus:border-cyan-500"
-          style={{
-            width: '280px',
-            height: '280px',
-            gridTemplateColumns: `repeat(${GRID_SIZE}, 1fr)`,
-            gridTemplateRows: `repeat(${GRID_SIZE}, 1fr)`,
-          }}
-          tabIndex={0}
-          autoFocus
-        >
-          {!isPlaying && !isGameOver && (
-            <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center z-10 space-y-3">
-              <p className="text-slate-300 text-xs px-4">Yön tuşlarıyla ya da aşağıdaki ekrandan yönet!</p>
-              <button 
-                onClick={startGame}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold transition shadow-lg cursor-pointer text-sm"
-              >
-                Oyunu Başlat
-              </button>
-            </div>
-          )}
+      <div className="relative border-4 border-slate-800 rounded-b-xl overflow-hidden shadow-2xl bg-black">
+        <canvas
+          ref={canvasRef}
+          width={1000}
+          height={600}
+          className="block cursor-crosshair"
+        />
 
-          {isGameOver && (
-            <div className="absolute inset-0 bg-slate-950/90 backdrop-blur-sm flex flex-col items-center justify-center z-10 space-y-3">
-              <p className="text-pink-500 font-extrabold text-lg">Oyun Bitti! 😢</p>
-              <p className="text-slate-300 text-sm">Toplam Skorun: {score}</p>
-              <button 
-                onClick={startGame}
-                className="px-6 py-2.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl font-bold transition shadow-lg cursor-pointer text-sm"
-              >
-                Tekrar Dene
-              </button>
-            </div>
-          )}
-
-          {Array.from({ length: GRID_SIZE * GRID_SIZE }).map((_, index) => {
-            const x = index % GRID_SIZE;
-            const y = Math.floor(index / GRID_SIZE);
-
-            const isSnakeHead = snake[0].x === x && snake[0].y === y;
-            const isSnakeBody = snake.slice(1).some(part => part.x === x && part.y === y);
-            const isFood = food.x === x && food.y === y;
-
-            let bgClass = 'bg-transparent';
-            if (isSnakeHead) bgClass = 'bg-emerald-400 rounded-sm shadow-sm';
-            else if (isSnakeBody) bgClass = 'bg-emerald-600 rounded-xs';
-            else if (isFood) bgClass = 'bg-pink-500 rounded-full animate-pulse shadow-md';
-
-            return <div key={index} className={`${bgClass} transition-colors duration-75`} />;
-          })}
-        </div>
-
-        {isPlaying && (
-          <div className="mt-4 grid grid-cols-3 gap-2 w-48 mx-auto">
-            <div />
-            <button 
-              onClick={() => changeDirection('UP')}
-              className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-md cursor-pointer"
+        {!isPlaying && (
+          <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center gap-4">
+            <h1 className="text-4xl font-extrabold tracking-wide text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400">
+              SAHAYA ÇIKMAYA HAZIR MISIN?
+            </h1>
+            <p className="text-slate-300 max-w-md text-center text-sm">
+              Sarı halkalı oyuncuyu sen yönetiyorsun. Pas attığında veya arkadaşın topu kaptığında kontrol otomatik olarak ona geçer!
+            </p>
+            <button
+              onClick={() => {
+                setIsPlaying(true);
+                playSound('whistle');
+              }}
+              className="mt-2 flex items-center gap-2 bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-bold px-8 py-3 rounded-full text-lg shadow-lg hover:scale-105 transition transform"
             >
-              ⬆️
-            </button>
-            <div />
-            <button 
-              onClick={() => changeDirection('LEFT')}
-              className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-md cursor-pointer"
-            >
-              ⬅️
-            </button>
-            <button 
-              onClick={() => changeDirection('DOWN')}
-              className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-md cursor-pointer"
-            >
-              ⬇️
-            </button>
-            <button 
-              onClick={() => changeDirection('RIGHT')}
-              className="py-3 bg-slate-800 hover:bg-slate-700 active:bg-emerald-600 text-white rounded-xl font-bold text-lg shadow-md cursor-pointer"
-            >
-              ➡️
+              <Play className="fill-current w-5 h-5" /> Maçı Başlat
             </button>
           </div>
         )}
-
-        <p className="text-xs text-slate-500 mt-3">Kontrol: Bilgisayarda ok tuşları, mobilde ekrandaki yön tuşları.</p>
       </div>
 
-      <GameReviews gameKey="snake" />
-    </div>
-  );
-}
-
-// 4. XOX Oyunu
-function TicTacToeGame({ onBack, onWin }: { onBack: () => void; onWin: () => void }) {
-  const [board, setBoard] = useState(Array(9).fill(null));
-  const [isPlayerTurn, setIsPlayerTurn] = useState(true);
-
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6],
-  ];
-
-  const calculateWinner = (squares: any[]) => {
-    for (let i = 0; i < lines.length; i++) {
-      const [a, b, c] = lines[i];
-      if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-        return squares[a];
-      }
-    }
-    return null;
-  };
-
-  const winner = calculateWinner(board);
-  const isDraw = !winner && board.every((square) => square !== null);
-
-  useEffect(() => {
-    if (winner === 'X') {
-      onWin();
-    }
-  }, [winner, onWin]);
-
-  useEffect(() => {
-    if (!isPlayerTurn && !winner && !isDraw) {
-      const timer = setTimeout(() => {
-        const newBoard = board.slice();
-        let moveIndex = -1;
-
-        for (let i = 0; i < lines.length; i++) {
-          const [a, b, c] = lines[i];
-          const testBoard = [...newBoard];
-          if (testBoard[a] === null && testBoard[b] === 'O' && testBoard[c] === 'O') { moveIndex = a; break; }
-          if (testBoard[b] === null && testBoard[a] === 'O' && testBoard[c] === 'O') { moveIndex = b; break; }
-          if (testBoard[c] === null && testBoard[a] === 'O' && testBoard[b] === 'O') { moveIndex = c; break; }
-        }
-
-        if (moveIndex === -1) {
-          for (let i = 0; i < lines.length; i++) {
-            const [a, b, c] = lines[i];
-            const testBoard = [...newBoard];
-            if (testBoard[a] === null && testBoard[b] === 'X' && testBoard[c] === 'X') { moveIndex = a; break; }
-            if (testBoard[b] === null && testBoard[a] === 'X' && testBoard[c] === 'X') { moveIndex = b; break; }
-            if (testBoard[c] === null && testBoard[a] === 'X' && testBoard[b] === 'X') { moveIndex = c; break; }
-          }
-        }
-
-        if (moveIndex === -1 && newBoard[4] === null) moveIndex = 4;
-
-        if (moveIndex === -1) {
-          const emptyIndices = newBoard
-            .map((val, idx) => (val === null ? idx : null))
-            .filter((val) => val !== null) as number[];
-
-          if (emptyIndices.length > 0) {
-            moveIndex = emptyIndices[Math.floor(Math.random() * emptyIndices.length)];
-          }
-        }
-
-        if (moveIndex !== -1) {
-          newBoard[moveIndex] = 'O';
-          setBoard(newBoard);
-          setIsPlayerTurn(true);
-        }
-      }, 500);
-
-      return () => clearTimeout(timer);
-    }
-  }, [isPlayerTurn, board, winner, isDraw]);
-
-  const handleClick = (index: number) => {
-    if (!isPlayerTurn || board[index] || winner) return;
-
-    const newBoard = board.slice();
-    newBoard[index] = 'X';
-    setBoard(newBoard);
-    setIsPlayerTurn(false);
-  };
-
-  const status = winner 
-    ? (winner === 'X' ? 'Tebrikler, Kazandın! 🎉' : 'Yapay Zeka Kazandı! 🤖') 
-    : isDraw 
-    ? 'Berabere! 🤝' 
-    : (isPlayerTurn ? 'Sıra Sende (X)' : 'Yapay Zeka düşünüyor... (O)');
-
-  return (
-    <div className="space-y-6 text-center w-full max-w-sm pb-12">
-      <div className="flex items-center justify-between w-full">
-        <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
-        <h3 className="text-xl font-bold">XOX (Zeki AI)</h3>
-        <div className="w-16" />
-      </div>
-
-      <div className="space-y-4 bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-xl">
-        <p className={`text-base font-semibold ${winner === 'X' ? 'text-emerald-400' : winner === 'O' ? 'text-pink-500' : 'text-cyan-400'}`}>
-          {status}
-        </p>
-        <div className="grid grid-cols-3 gap-3">
-          {board.map((cell, index) => (
-            <button
-              key={index}
-              onClick={() => handleClick(index)}
-              className="h-20 bg-slate-950 border border-slate-800 rounded-xl text-3xl font-black text-white hover:border-cyan-500 transition flex items-center justify-center cursor-pointer shadow-inner"
-            >
-              <span className={cell === 'X' ? 'text-cyan-400' : 'text-pink-500'}>{cell}</span>
-            </button>
-          ))}
+      <div className="w-full max-w-[1000px] mt-3 bg-slate-800 rounded-lg p-3 flex items-center gap-4 border border-slate-700">
+        <div className="flex items-center gap-2 text-xs font-bold text-yellow-400">
+          <Zap className="w-4 h-4" /> ŞUT GÜCÜ:
         </div>
-        <button
-          onClick={() => { setBoard(Array(9).fill(null)); setIsPlayerTurn(true); }}
-          className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-sm font-medium transition cursor-pointer"
-        >
-          Yeniden Başlat
-        </button>
+        <div className="flex-1 bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700">
+          <div
+            className="bg-gradient-to-r from-yellow-500 via-orange-500 to-red-600 h-full transition-all duration-75"
+            style={{ width: `${power}%` }}
+          />
+        </div>
+        <span className="text-xs font-mono text-slate-400 w-10 text-right">%{Math.round(power)}</span>
       </div>
 
-      <GameReviews gameKey="tictactoe" />
-    </div>
-  );
-}
-
-// 5. Taş Kağıt Makas
-function RpsGame({ onBack, onWin }: { onBack: () => void; onWin: (score: number) => void }) {
-  const [playerChoice, setPlayerChoice] = useState<string | null>(null);
-  const [computerChoice, setComputerChoice] = useState<string | null>(null);
-  const [result, setResult] = useState<string>('Seçimini yap ve şansını dene!');
-  
-  const [playerScore, setPlayerScore] = useState(0);
-  const [computerScore, setComputerScore] = useState(0);
-  const playerScoreRef = useRef(0);
-
-  const choices = ['Taş 🪨', 'Kağıt 📄', 'Makas ✂️'];
-
-  const playGame = (choice: string) => {
-    setPlayerChoice(choice);
-    const comp = choices[Math.floor(Math.random() * choices.length)];
-    setComputerChoice(comp);
-
-    if (choice === comp) {
-      setResult('Berabere! 🤝');
-    } else if (
-      (choice.includes('Taş') && comp.includes('Makas')) ||
-      (choice.includes('Kağıt') && comp.includes('Taş')) ||
-      (choice.includes('Makas') && comp.includes('Kağıt'))
-    ) {
-      setResult('Tebrikler, Bu Turu Kazandın! 🎉');
-      playerScoreRef.current += 1;
-      setPlayerScore(playerScoreRef.current);
-      onWin(playerScoreRef.current);
-    } else {
-      setResult('Bilgisayar Bu Turu Kazandı! 😢');
-      setComputerScore(prev => prev + 1);
-    }
-  };
-
-  const resetScores = () => {
-    playerScoreRef.current = 0;
-    setPlayerScore(0);
-    setComputerScore(0);
-    setPlayerChoice(null);
-    setComputerChoice(null);
-    setResult('Seçimini yap ve şansını dene!');
-  };
-
-  return (
-    <div className="space-y-6 text-center w-full max-w-md pb-12">
-      <div className="flex items-center justify-between w-full">
-        <button onClick={onBack} className="text-sm text-cyan-400 hover:underline cursor-pointer">← Menüye Dön</button>
-        <h3 className="text-xl font-bold">Taş Kağıt Makas</h3>
-        <div className="w-16" />
+      <div className="w-full max-w-[1000px] mt-2 bg-slate-800/60 rounded-lg p-2.5 text-center text-sm text-emerald-300 border border-slate-700/50 font-medium">
+        🎙️ {commentary}
       </div>
 
-      <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl space-y-6 shadow-xl">
-        <div className="flex justify-around items-center bg-slate-950 p-3 rounded-xl border border-slate-800/80 text-sm">
-          <div className="text-cyan-400 font-bold">Sen: {playerScore}</div>
-          <div className="text-slate-500 text-xs uppercase tracking-wider">Anlık Skor</div>
-          <div className="text-pink-500 font-bold">Bot: {computerScore}</div>
+      <div className="w-full max-w-[1000px] mt-4 grid grid-cols-1 md:grid-cols-4 gap-3 text-xs text-slate-400">
+        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 flex items-center gap-2">
+          <Gamepad2 className="w-5 h-5 text-blue-400 shrink-0" />
+          <span><b>WASD / Yön Tuşları:</b> Hareket Et</span>
         </div>
-
-        <p className="text-base font-bold text-slate-200 min-h-[28px] flex items-center justify-center">{result}</p>
-        
-        <div className="flex justify-around text-sm text-slate-400 bg-slate-950 p-4 rounded-xl border border-slate-800/60">
-          <div>Senin Seçimin: <span className="text-white font-bold block mt-1">{playerChoice || '-'}</span></div>
-          <div className="border-r border-slate-800" />
-          <div>Bilgisayar: <span className="text-white font-bold block mt-1">{computerChoice || '-'}</span></div>
+        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 flex items-center gap-2">
+          <Zap className="w-5 h-5 text-yellow-400 shrink-0" />
+          <span><b>SPACE (Basılı Tut):</b> Şut Çek</span>
         </div>
-
-        <div className="grid grid-cols-3 gap-3 pt-2">
-          {choices.map((c) => (
-            <button
-              key={c}
-              onClick={() => playGame(c)}
-              className="py-3 bg-slate-800 hover:bg-cyan-600 hover:text-white rounded-xl font-medium transition cursor-pointer text-sm shadow-md"
-            >
-              {c}
-            </button>
-          ))}
+        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 flex items-center gap-2">
+          <Info className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span><b>K Tuşu:</b> Takım Arkadaşına Pas At</span>
         </div>
-
-        <button
-          onClick={resetScores}
-          className="w-full py-2 bg-slate-950 hover:bg-slate-800 text-slate-400 hover:text-white rounded-xl text-xs font-medium transition border border-slate-800 cursor-pointer"
-        >
-          Skorları Sıfırla
-        </button>
+        <div className="bg-slate-800/40 p-3 rounded-lg border border-slate-700/50 flex items-center gap-2">
+          <Info className="w-5 h-5 text-red-400 shrink-0" />
+          <span><b>E Tuşu:</b> Top Kap / Müdahale Et</span>
+        </div>
       </div>
-
-      <GameReviews gameKey="rps" />
     </div>
   );
 }
